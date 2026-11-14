@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { downloadEntries, listEntries, moduleMeta, runAction as applyAction } from '@/api/local-service'
-import type { EntryRow } from '@/data/types'
+import { countByStatus, downloadEntries, listEntries, listStats, moduleMeta, runAction as applyAction } from '@/api/local-service'
+import type { EntryRow, StatItem } from '@/data/types'
 
 const meta = moduleMeta('tag')
 const columns = [
@@ -25,24 +25,11 @@ const statuses = [
   "已启用",
   "已停用"
 ]
-const stats = [
-  {
-    "label": "标签定义总数",
-    "value": 0
-  },
-  {
-    "label": "已启用标签",
-    "value": 0
-  },
-  {
-    "label": "待校验标签",
-    "value": 0
-  }
-]
-
 export default function TagView() {
   const [rows, setRows] = useState<EntryRow[]>([])
   const [total, setTotal] = useState(0)
+  const [stats, setStats] = useState<StatItem[]>(() => listStats(meta.key))
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>(() => countByStatus(meta.key))
   const [errorMessage, setErrorMessage] = useState('')
   const [filters, setFilters] = useState<Record<string, string>>({})
   const filterFields = useMemo(() => columns.slice(0, 3), [])
@@ -53,6 +40,8 @@ export default function TagView() {
       const payload = listEntries(meta.key, filters)
       setRows(payload.items)
       setTotal(payload.total)
+      setStats(listStats(meta.key))
+      setStatusCounts(countByStatus(meta.key))
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '数据标签列表读取失败')
     }
@@ -101,7 +90,7 @@ export default function TagView() {
       <p className="status-legend">
         {statuses.map((status: string) => (
           <span key={status} className="legend-item">
-            {status}：{rows.filter((row) => String(row.status) === status).length}
+            {status}：{statusCounts[status] ?? 0}
           </span>
         ))}
       </p>

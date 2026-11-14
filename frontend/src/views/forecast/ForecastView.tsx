@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { downloadEntries, listEntries, moduleMeta, runAction as applyAction } from '@/api/local-service'
-import type { EntryRow } from '@/data/types'
+import { countByStatus, downloadEntries, listEntries, listStats, moduleMeta, runAction as applyAction } from '@/api/local-service'
+import type { EntryRow, StatItem } from '@/data/types'
 
 const meta = moduleMeta('forecast')
 const columns = [
@@ -25,24 +25,11 @@ const statuses = [
   "已生效",
   "已失效"
 ]
-const stats = [
-  {
-    "label": "预测模型总数",
-    "value": 0
-  },
-  {
-    "label": "已生效模型",
-    "value": 0
-  },
-  {
-    "label": "待训练模型",
-    "value": 0
-  }
-]
-
 export default function ForecastView() {
   const [rows, setRows] = useState<EntryRow[]>([])
   const [total, setTotal] = useState(0)
+  const [stats, setStats] = useState<StatItem[]>(() => listStats(meta.key))
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>(() => countByStatus(meta.key))
   const [errorMessage, setErrorMessage] = useState('')
   const [filters, setFilters] = useState<Record<string, string>>({})
   const filterFields = useMemo(() => columns.slice(0, 3), [])
@@ -53,6 +40,8 @@ export default function ForecastView() {
       const payload = listEntries(meta.key, filters)
       setRows(payload.items)
       setTotal(payload.total)
+      setStats(listStats(meta.key))
+      setStatusCounts(countByStatus(meta.key))
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '趋势预测列表读取失败')
     }
@@ -101,7 +90,7 @@ export default function ForecastView() {
       <p className="status-legend">
         {statuses.map((status: string) => (
           <span key={status} className="legend-item">
-            {status}：{rows.filter((row) => String(row.status) === status).length}
+            {status}：{statusCounts[status] ?? 0}
           </span>
         ))}
       </p>

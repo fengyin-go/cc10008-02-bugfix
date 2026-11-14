@@ -68,6 +68,11 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 列表页统计卡片与状态图例由 `listStats` / `countByStatus` 按全量数据实时计算，不随筛选条件变化。
+- 存储结构是 `{ rev, entries, releases }`：`rev` 用于并发保护——同一浏览器两个页面同时改动时，
+  后提交的页面会收到「请先刷新读取最新版本」的提示，避免旧数据回写。
+- 可视化图表每次发布生成一条发布版本（`releases`）：同一配置只保留一个当前版本，重新上线生成新的
+  发布序号，旧版本转历史且不可回写；报告生成的「包含图表」选择器只列当前发布版本。
 - 想回到初始数据：清掉浏览器里 `interactive-analytics-lab:entries` 这一项，或调用 `resetModule(模块)`。
 
 领域：数据工程

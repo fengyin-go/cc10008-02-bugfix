@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { downloadEntries, listEntries, moduleMeta, runAction as applyAction } from '@/api/local-service'
-import type { EntryRow } from '@/data/types'
+import {
+  countByStatus,
+  createEntry,
+  downloadEntries,
+  listEntries,
+  listStats,
+  moduleMeta,
+  publishedChartOptions,
+  runAction as applyAction,
+} from '@/api/local-service'
+import type { EntryRow, StatItem } from '@/data/types'
 
 const meta = moduleMeta('reportgen')
 const columns = [
@@ -25,26 +34,21 @@ const statuses = [
   "已生效",
   "已停用"
 ]
-const stats = [
-  {
-    "label": "报告模板总数",
-    "value": 0
-  },
-  {
-    "label": "已生效模板",
-    "value": 0
-  },
-  {
-    "label": "待审核模板",
-    "value": 0
-  }
-]
+// 除「包含图表」外的登记表单字段，包含图表用已发布版本选择器勾选
+const textFields = ["模板名称", "报告周期", "导出格式", "推送渠道", "水印开关", "附件压缩"]
 
 export default function ReportgenView() {
   const [rows, setRows] = useState<EntryRow[]>([])
   const [total, setTotal] = useState(0)
+  const [stats, setStats] = useState<StatItem[]>(() => listStats(meta.key))
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>(() => countByStatus(meta.key))
+  const [chartOptions, setChartOptions] = useState<{ value: string; label: string }[]>([])
   const [errorMessage, setErrorMessage] = useState('')
+  const [notice, setNotice] = useState('')
   const [filters, setFilters] = useState<Record<string, string>>({})
+  const [creating, setCreating] = useState(false)
+  const [form, setForm] = useState<Record<string, string>>({})
+  const [selectedCharts, setSelectedCharts] = useState<string[]>([])
   const filterFields = useMemo(() => columns.slice(0, 3), [])
 
   const reload = useCallback(() => {
@@ -53,6 +57,10 @@ export default function ReportgenView() {
       const payload = listEntries(meta.key, filters)
       setRows(payload.items)
       setTotal(payload.total)
+      setStats(listStats(meta.key))
+      setStatusCounts(countByStatus(meta.key))
+      // 选择器与计数读同一份持久化数据，刷新后仍指向同一发布版本
+      setChartOptions(publishedChartOptions())
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '报告生成列表读取失败')
     }
@@ -64,11 +72,40 @@ export default function ReportgenView() {
 
   function runAction(action: string, row: EntryRow) {
     setErrorMessage('')
+    setNotice('')
     const result = applyAction(meta.key, Number(row.id), action)
     if (!result.ok) {
       setErrorMessage(result.message)
       return
     }
+    setNotice(result.message)
+    reload()
+  }
+
+  function openCreate() {
+    setCreating(true)
+    setForm(Object.fromEntries(textFields.map((field) => [field, ''])))
+    setSelectedCharts([])
+    setErrorMessage('')
+    setNotice('')
+  }
+
+  function toggleChart(value: string) {
+    setSelectedCharts((prev) =>
+      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value],
+    )
+  }
+
+  function saveForm() {
+    setErrorMessage('')
+    setNotice('')
+    const result = createEntry(meta.key, { ...form, 包含图表: selectedCharts.join('、') })
+    if (!result.ok) {
+      setErrorMessage(result.message)
+      return
+    }
+    setNotice(result.message)
+    setCreating(false)
     reload()
   }
 
@@ -80,7 +117,7 @@ export default function ReportgenView() {
           <p className="page-desc">维护分析报告模板的输入、执行约束与结果记录，为报告生成提供可验证的数据工程流程。</p>
         </div>
         <div className="page-actions">
-          <button className="btn primary" type="button" onClick={() => setErrorMessage('报告模板登记入口尚未接入审批流')}>
+          <button className="btn primary" type="button" onClick={openCreate}>
             登记报告模板
           </button>
           <button className="btn" type="button" onClick={() => downloadEntries(meta.key)}>
@@ -101,10 +138,50 @@ export default function ReportgenView() {
       <p className="status-legend">
         {statuses.map((status: string) => (
           <span key={status} className="legend-item">
-            {status}：{rows.filter((row) => String(row.status) === status).length}
+            {status}：{statusCounts[status] ?? 0}
           </span>
         ))}
       </p>
+
+      {creating && (
+        <div className="form-panel">
+          <h3 className="form-title">登记报告模板</h3>
+          <div className="form-grid">
+            {textFields.map((field) => (
+              <label key={field} className="form-item">
+                <span>{field}</span>
+                <input
+                  value={form[field] ?? ''}
+                  placeholder={`请输入${field}`}
+                  onChange={(event) => setForm((prev) => ({ ...prev, [field]: event.target.value }))}
+                />
+              </label>
+            ))}
+          </div>
+          <div className="chart-picker">
+            <span className="chart-picker-label">包含图表（当前已发布版本，共 {chartOptions.length} 个可选）</span>
+            {chartOptions.length === 0 && (
+              <p className="page-desc">暂无已发布图表版本可引用，请先在可视化图表页发布图表。</p>
+            )}
+            <div className="checkbox-list">
+              {chartOptions.map((option) => (
+                <label key={option.value} className="checkbox-item">
+                  <input
+                    type="checkbox"
+                    checked={selectedCharts.includes(option.value)}
+                    onChange={() => toggleChart(option.value)}
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="form-actions">
+            <button className="btn primary" type="button" onClick={saveForm}>保存</button>
+            <button className="btn ghost" type="button" onClick={() => setCreating(false)}>取消</button>
+          </div>
+        </div>
+      )}
 
       <form className="filter-bar" onSubmit={(event) => { event.preventDefault(); reload() }}>
         {filterFields.map((field) => (
@@ -153,6 +230,7 @@ export default function ReportgenView() {
 
       <footer className="page-foot">
         <span>共 {total} 条报告生成记录</span>
+        {notice && <span className="notice-text">{notice}</span>}
         {errorMessage && <span className="error-text">{errorMessage}</span>}
       </footer>
     </section>
